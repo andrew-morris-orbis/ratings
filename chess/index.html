@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<!-- This is a hacked together build from github.com/voltrevo/match (TODO: do this a non-hacky way) -->
+<script src='getRatingsAndSuggestedGames-script.js'></script>
+
+<!-- This file is not versioned / values must be provided when deployed (see usage of window.config) -->
+<script src='config.js'></script>
+
+<script>
+
+'use strict';
+
+const getRatingsAndSuggestedGames = window.getRatingsAndSuggestedGames;
+const {sheetsApiKey, sheetId, sheetLink} = window.config;
+
+const sheetsApiUrl = (
+  `https://content-sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?` +
+  `ranges=A2%3AF1000&` +
+  `majorDimension=ROWS&` +
+  `valueRenderOption=FORMATTED_VALUE&` +
+  `dateTimeRenderOption=SERIAL_NUMBER&` +
+  `key=${sheetsApiKey}`
+);
+
+function load() {
+  const statusDiv = document.querySelector('#status');
+  const ratingsDiv = document.querySelector('#ratings');
+  const suggestedGamesDiv = document.querySelector('#suggested-games');
+
+  statusDiv.textContent = 'Loading...';
+  ratingsDiv.innerHTML = '';
+  suggestedGamesDiv.innerHTML = '';
+
+  fetch(sheetsApiUrl)
+  .then(res => res.json())
+  .then(sheetsResponse => {
+    statusDiv.textContent = 'Got response';
+    const rows = sheetsResponse.valueRanges[0].values;
+    statusDiv.textContent = `Loaded ${rows.length} rows`;
+    render(rows, ratingsDiv, suggestedGamesDiv);
+  })
+  .catch(err => {
+    statusDiv.innerHTML = '';
+    const pre = document.createElement('pre');
+    pre.textContent = `Error:\n\n${err.stack || err.message}`;
+    statusDiv.appendChild(pre);
+  });
+};
+
+function parseRow(row) {
+  const game = {
+    playerA: row[4],
+    playerB: row[5],
+  };
+
+  const sanitizedOutcome = row[3].trim().toLowerCase();
+
+  if (sanitizedOutcome === 'draw') {
+    game.winner = 'draw';
+  } else if (sanitizedOutcome === 'white') {
+    game.winner = game.playerA;
+  } else if (sanitizedOutcome === 'black') {
+    game.winner = game.playerB;
+  } else {
+    throw new Error('Couldn\'t parse game outcome of ' + row.join(', '));
+  }
+
+  return game;
+}
+
+function render(rows, ratingsDiv, suggestedGamesDiv) {
+  const games = rows.map(parseRow);
+  const {ratings, suggestedGames} = getRatingsAndSuggestedGames(games);
+
+  // Ratings
+  const ratingsTable = document.createElement('table');
+
+  let maxRating = -Infinity;
+
+  for (const playerName of Object.keys(ratings)) {
+    maxRating = Math.max(maxRating, ratings[playerName]);
+  }
+
+  const sortedPlayers = Object.keys(ratings).sort((p1, p2) => ratings[p2] - ratings[p1]);
+
+  for (const playerName of sortedPlayers) {
+    const rating = ratings[playerName];
+
+    const tr = document.createElement('tr');
+
+    const nameTd = document.createElement('td');
+    nameTd.textContent = playerName;
+    nameTd.style.width = '0';
+    tr.appendChild(nameTd);
+
+    const ratingTd = document.createElement('td');
+    const ratingDiv = document.createElement('div');
+    ratingDiv.textContent = rating.toFixed(0);
+    ratingDiv.style.width = `${(rating / maxRating * 100).toFixed(1)}%`;
+    ratingTd.appendChild(ratingDiv);
+    ratingTd.style.width = '100%';
+    tr.appendChild(ratingTd);
+
+    ratingsTable.appendChild(tr);
+  }
+
+  ratingsDiv.appendChild(ratingsTable);
+
+  // Suggested Games
+  const gamesTable = document.createElement('table');
+
+  for (const [p1, p2] of suggestedGames) {
+    const tr = document.createElement('tr');
+
+    const td1 = document.createElement('td');
+    const td2 = document.createElement('td');
+    const td3 = document.createElement('td');
+
+    td1.textContent = p1;
+    td2.textContent = 'v';
+    td3.textContent = p2;
+
+    tr.appendChild(td1);
+    tr.appendChild(td2);
+    tr.appendChild(td3);
+
+    gamesTable.appendChild(tr);
+  }
+
+  suggestedGamesDiv.appendChild(gamesTable);
+}
+
+window.addEventListener('load', () => {
+  document.querySelector('#reload-btn').onclick = load;
+  document.querySelector('#sheet-embed').setAttribute('src', sheetLink);
+  load();
+});
+
+</script>
+
+<style>
+
+body {
+  font-family: sans-serif;
+  background-color: #2B303A;
+  color: white;
+  margin: 30px;
+}
+
+table {
+  border-collapse: collapse;
+  margin-top: 5px;
+}
+
+td {
+  padding: 10px;
+}
+
+#ratings > table {
+  width: 100%;
+}
+
+#ratings td div {
+  background-color: #732C2C;
+  border-radius: 3px;
+  color: white;
+  padding: 5px;
+}
+
+hr {
+  border: 0;
+  height: 1px;
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 1), rgba(255, 255, 255, 1), rgba(255, 255, 255, 0));
+  margin: 50px 0;
+}
+
+button {
+  border-radius: 3px;
+  background-color: #1F7A8C;
+  color: white;
+  border: 1px solid white;
+  padding: 5px;
+  margin-top: 5px;
+}
+
+button:hover {
+  cursor: pointer;
+}
+
+button:focus {
+  outline: 0;
+}
+
+.fine-print {
+  font-size: small;
+  font-style: italic;
+  margin-top: 20px;
+}
+
+.heading {
+  color: #BFDBF7;
+  font-size: large;
+}
+
+#powered-by {
+  position: fixed;
+  right: 15px;
+  bottom: 15px;
+  line-height: 15px;
+}
+
+#powered-by img {
+  width: 15px;
+  height: 15px;
+  margin-left: 5px;
+}
+
+a {
+  color: rgb(140, 179, 218);
+  text-decoration: none;
+}
+
+h1 {
+  text-align: center;
+}
+
+</style>
+
+</head>
+<body>
+
+<h1>Orbis Chess</h1>
+
+<hr>
+
+<h1><a href='../tabletennis'>Orbis Table Tennis</a></h1>
+
+<hr>
+
+<div>
+  <div class='heading'>Ratings</div>
+  <div id='ratings'></div>
+  <div class='fine-print'>These ratings are not normalized against any external sources. The average is 1500 and a +200 player has an estimated 75% chance of winning.</div>
+</div>
+
+<hr>
+
+<div>
+  <div class='heading'>Best next games</div>
+  <div id='suggested-games'></div>
+  <div class='fine-print'>First &amp; second order is arbitrary / doesn't track white &amp; black.</div>
+</div>
+
+<hr>
+
+<div>
+  Status: <span id='status'>Script not started</span><br>
+  <button id='reload-btn'>Reload</button>
+</div>
+
+<hr>
+
+<iframe id='sheet-embed' style='width: 100%; height: 90vw;'></iframe>
+
+<div id='powered-by'>Powered by <a href='https://github.com/voltrevo/chess-gsheets-calculator'>voltrevo</a> projects <img alt='github octocat' src='GitHub-Mark-Light-64px.png'></div>
+
+</body>
+</html>
